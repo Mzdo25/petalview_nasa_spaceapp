@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+// nigga
 // --- NEW IMPORTS ---
 // To get the current user and sign out
 import 'package:firebase_auth/firebase_auth.dart';
