@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:petalview/auth/login.dart';
 
+// --- NEW IMPORTS ---
+// For Firebase Authentication
+import 'package:firebase_auth/firebase_auth.dart'; 
+// For Firebase Database
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+// --- END NEW IMPORTS ---
+
+
 class Signup extends StatefulWidget {
   static const routeName = 'SignUp';
   const Signup({super.key});
@@ -22,6 +30,7 @@ class _SignupState extends State<Signup> {
 
   bool _obscurePass = true;
   bool _obscureConfirm = true;
+  bool _isLoading = false; // <-- UPDATED: To show loading spinner
 
   // ألوان ثابتة
   static const mint  = Color(0xFFE6F3EA);
@@ -87,14 +96,95 @@ class _SignupState extends State<Signup> {
     return null;
   }
 
-  void _submit() {
+  // --- THIS IS THE FULL, UPDATED SUBMIT METHOD ---
+  void _submit() async { // <-- UPDATED with async
     final valid = _formKey.currentState?.validate() ?? false;
     if (!valid) return;
 
-    // TODO: call your sign-up API / Firebase here.
-    // لو التسجيل نجح:
-    Navigator.of(context).pushReplacementNamed('home');
+    // Start loading
+    if (mounted) setState(() => _isLoading = true);
+
+    try {
+      // Get text from controllers
+      final email = _email.text.trim();
+      final password = _password.text.trim();
+      final firstName = _firstName.text.trim();
+      final lastName = _lastName.text.trim();
+
+      // 1. Create the user in Firebase Authentication
+      final userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      
+      final user = userCredential.user; // Get the user object
+
+      // 2. Save the user's data to Cloud Firestore
+      if (user != null) {
+        // Create a data map (like a JSON object)
+        final userData = {
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': email,
+          'createdAt': Timestamp.now(), // Adds a timestamp
+        };
+
+        // Send the data to Firestore, creating a document
+        // inside the 'users' collection with the user's UID
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid) // This is the unique ID from Auth
+            .set(userData); // Set the user data
+      }
+
+      print("Sign-up successful: ${user?.uid}");
+
+      // If successful, navigate to home
+      if (mounted) {
+        // You might want to navigate to a 'verify email' page first
+        // But for now, 'home' is fine.
+        Navigator.of(context).pushReplacementNamed('home');
+      }
+
+    } on FirebaseAuthException catch (e) {
+      // Handle Firebase-specific errors
+      String message = 'An error occurred. Please try again.';
+      if (e.code == 'weak-password') {
+        message = 'The password provided is too weak.';
+      } else if (e.code == 'email-already-in-use') {
+        message = 'This email is already in use by another account.';
+      } else if (e.code == 'invalid-email') {
+        message = 'The email address is not valid.';
+      } else {
+        print(e.message); // Log the full error for debugging
+      }
+
+      // Show the error message in a SnackBar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      // Handle any other generic errors
+      print(e); // Log the error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      // Stop loading, whether it failed or succeeded
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
+  // --- END OF UPDATED METHOD ---
 
   @override
   Widget build(BuildContext context) {
@@ -203,7 +293,7 @@ class _SignupState extends State<Signup> {
                           ),
                           const SizedBox(height: 20),
 
-                          // Sign Up Button
+                          // --- UPDATED SIGN UP BUTTON ---
                           SizedBox(
                             width: double.infinity,
                             child: ElevatedButton(
@@ -216,16 +306,27 @@ class _SignupState extends State<Signup> {
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: _submit,
-                              child: Text(
-                                "Sign Up",
-                                style: GoogleFonts.merriweather(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              // Disable button when loading, otherwise call _submit
+                              onPressed: _isLoading ? null : _submit, // <-- UPDATED
+                              child: _isLoading
+                                  ? const SizedBox( // <-- UPDATED: Show spinner
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2.5,
+                                      ),
+                                    )
+                                  : Text( // <-- UPDATED: Show text
+                                      "Sign Up",
+                                      style: GoogleFonts.merriweather(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                             ),
                           ),
+                          // --- END OF UPDATED BUTTON ---
                           const SizedBox(height: 20),
 
                           // Continue with Social

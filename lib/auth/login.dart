@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:petalview/auth/signup.dart';
 
+// --- NEW IMPORT ---
+import 'package:firebase_auth/firebase_auth.dart';
+// --- END NEW IMPORT ---
+
 class Login extends StatefulWidget {
   static const routeName = 'login';
   const Login({super.key});
@@ -16,6 +20,8 @@ class _LoginState extends State<Login> {
   final _password = TextEditingController();
   bool _obscure = true;
 
+  bool _isLoading = false;
+
   static const mint  = Color(0xFFE6F3EA);
   static const green = Color(0xFF23C16B);
   static const borderLight = Color(0xFFDAEFDE);
@@ -27,7 +33,6 @@ class _LoginState extends State<Login> {
     super.dispose();
   }
 
-  // ديكور موحّد للحقول
   InputDecoration _dec(String label, {Widget? suffix}) {
     return InputDecoration(
       labelText: label,
@@ -48,7 +53,6 @@ class _LoginState extends State<Login> {
     );
   }
 
-  // فالاتيدتورز
   String? _emailValidator(String? v) {
     if (v == null || v.trim().isEmpty) return 'Email is required';
     final re = RegExp(r'^[\w\.\-]+@[\w\-]+\.[A-Za-z]{2,}$');
@@ -56,23 +60,125 @@ class _LoginState extends State<Login> {
     return null;
   }
 
-  String? _passwordValidator(String? v) {
-    if (v == null || v.isEmpty) return 'Password is required';
-    if (v.length < 8) return 'Minimum 8 characters';
-    final hasLetter = RegExp(r'[A-Za-z]').hasMatch(v);
-    final hasDigit  = RegExp(r'\d').hasMatch(v);
-    if (!hasLetter || !hasDigit) return 'Use letters and numbers';
-    return null;
-  }
-
-  void _submit() {
+  void _submit() async {
     final valid = _formKey.currentState?.validate() ?? false;
     if (!valid) return;
 
-    // TODO: auth logic (API / Firebase)
-    // لو الحساب صحيح → روح للـ Home
-    Navigator.of(context).pushReplacementNamed('home');
+    if (mounted) setState(() => _isLoading = true);
+
+    try {
+      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: _email.text.trim(),
+        password: _password.text.trim(),
+      );
+
+      print("Log-in successful: ${userCredential.user?.uid}");
+
+      if (mounted) {
+        Navigator.of(context).pushReplacementNamed('home');
+      }
+
+    } on FirebaseAuthException catch (e) {
+      String message = 'An error occurred. Please try again.';
+      if (e.code == 'invalid-credential') {
+        message = 'Invalid email or password. Please try again.';
+      } else if (e.code == 'invalid-email') {
+        message = 'The email format is not valid.';
+      } else {
+        print(e.message);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } catch (e) {
+      print(e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
+
+  // --- 1. HERE IS THE NEW FORGOT PASSWORD METHOD ---
+  Future<void> _forgotPassword() async {
+    // 1. Get the email from the text controller
+    final email = _email.text.trim();
+
+    // 2. Validate the email (using your existing validator)
+    final emailError = _emailValidator(email);
+    
+    if (emailError != null) {
+      // If the email is empty or invalid, show a SnackBar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              emailError == 'Email is required'
+                  ? 'Please enter your email in the field first.'
+                  : emailError, // Shows "Enter a valid email"
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return; // Stop if email is not valid
+    }
+
+    // 3. If email is valid, send the reset link
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
+      // 4. Show a success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Password reset link sent to $email. Check your inbox.'),
+            backgroundColor: Colors.green, // Green for success
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      // Print the error for debugging.
+      // We'll show a generic success message anyway to prevent
+      // attackers from "guessing" which emails are registered.
+      print("Forgot Password Error: ${e.code}");
+
+      // Show a generic message to the user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Password reset link sent. If $email is registered, you will receive it.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Handle other errors
+      print(e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+  // --- END OF NEW METHOD ---
+
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +250,12 @@ class _LoginState extends State<Login> {
                                 ),
                               ),
                             ),
-                            validator: _passwordValidator,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) {
+                                return 'Password is required';
+                              }
+                              return null;
+                            },
                           ),
                           const SizedBox(height: 12),
 
@@ -161,9 +272,9 @@ class _LoginState extends State<Login> {
                                   const TextSpan(text: 'Forgot your Password? '),
                                   WidgetSpan(
                                     child: GestureDetector(
-                                      onTap: () {
-                                        // TODO: navigate to forgot password
-                                      },
+                                      // --- 2. THIS IS THE ONLY CHANGE IN THE BUILD METHOD ---
+                                      onTap: _forgotPassword, // <-- UPDATED
+                                      // --- END OF CHANGE ---
                                       child: Text(
                                         'Click here',
                                         style: GoogleFonts.merriweather(
@@ -191,14 +302,23 @@ class _LoginState extends State<Login> {
                                 ),
                                 elevation: 0,
                               ),
-                              onPressed: _submit,
-                              child: Text(
-                                'Log in',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              onPressed: _isLoading ? null : _submit,
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 3,
+                                      ),
+                                    )
+                                  : Text(
+                                      'Log in',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                             ),
                           ),
                           const SizedBox(height: 18),
@@ -302,7 +422,6 @@ class _LoginState extends State<Login> {
   }
 }
 
-// زرار سوشيال بشكل كارت صغير مستدير
 class _SocialButton extends StatelessWidget {
   final String asset;
   const _SocialButton({required this.asset});

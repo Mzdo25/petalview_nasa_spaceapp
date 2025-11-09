@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "853113264381",
+    "project_id": "petalview-5ad27",
+    "storage_bucket": "petalview-5ad27.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:853113264381:android:485bb315a5bf6086f6c694",
+        "android_client_info": {
+          "package_name": "com.example.petalview"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDNk5NzZFMvb4uR63vbXKhSnojdD4sE660"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

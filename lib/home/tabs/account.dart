@@ -1,33 +1,124 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class AccountScreen extends StatelessWidget {
-  final String userName;
-  const AccountScreen({super.key, this.userName = "Sofia"});
+// --- NEW IMPORTS ---
+// To get the current user and sign out
+import 'package:firebase_auth/firebase_auth.dart';
+// To fetch the user's data from the database
+import 'package:cloud_firestore/cloud_firestore.dart';
+// To navigate back to the login screen
+import 'package:petalview/auth/login.dart';
+// --- END NEW IMPORTS ---
+
+
+// --- 1. CONVERTED TO A STATEFUL WIDGET ---
+class AccountScreen extends StatefulWidget {
+  // We no longer pass the name in, we fetch it.
+  const AccountScreen({super.key});
   static const routeName = 'Account';
 
   // ثوابت ألوان
   static const mint = Color(0xFFE6F3EA);
   static const green = Color(0xFFDAEFDE);
   static const barGreen = Color(0xFF1E7E5A);
-  static const pastelChip = Color(0xFFFFE0B2); // لون المؤشر في البار (لو حابة)
+  static const pastelChip = Color(0xFFFFE0B2);
+
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+
+  // --- 2. ADDED STATE VARIABLES ---
+  String _userName = "";  // Will hold the user's name
+  bool _isLoading = true; // To show a loading indicator
+
+  // --- 3. ADDED 'initState' AND 'fetch' METHODS ---
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserData(); // Fetch data when the widget loads
+  }
+
+  Future<void> _fetchUserData() async {
+    try {
+      // Get the current user from Authentication
+      User? user = FirebaseAuth.instance.currentUser;
+
+      if (user != null) {
+        // Get the user's document from Firestore
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+
+        if (userDoc.exists) {
+          // Get the 'firstName' field from the document
+          // and update our state
+          setState(() {
+            _userName = (userDoc.data() as Map<String, dynamic>)['firstName'] ?? 'User';
+            _isLoading = false;
+          });
+        } else {
+          // Handle case where user is authenticated but doc doesn't exist
+          setState(() {
+            _userName = "User";
+            _isLoading = false;
+          });
+        }
+      } else {
+        // Handle case where no user is logged in
+        setState(() {
+          _userName = "Guest";
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Error fetching user data: $e");
+      // Handle any errors
+      setState(() {
+        _userName = "Guest";
+        _isLoading = false;
+      });
+    }
+  }
+
+  // --- 4. ADDED REAL SIGN-OUT METHOD ---
+  Future<void> _signOut() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        // Go back to the login screen
+        Navigator.of(context).pushReplacementNamed(Login.routeName);
+      }
+    } catch (e) {
+      print("Error signing out: $e");
+      // Show an error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error signing out. Please try again.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+  // --- END OF NEW METHODS ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // لو الشاشة ضمن Tabs بتركبيها بدون appBar
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // خلفية زخرفية
           Image.asset('assets/bg_welcome.png', fit: BoxFit.cover),
-          Container(color: mint.withOpacity(0.15)),
+          Container(color: AccountScreen.mint.withOpacity(0.15)),
 
           SafeArea(
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               children: [
-                // لوجو الكلمة
                 Align(
                   alignment: Alignment.topCenter,
                   child: Image.asset(
@@ -37,7 +128,6 @@ class AccountScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
 
-                // الأفاتار (دائرة) مع قلب صغير وأيقونة قلم للتعديل
                 Center(
                   child: Stack(
                     clipBehavior: Clip.none,
@@ -56,9 +146,12 @@ class AccountScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.perm_identity_sharp, size: 90, color: Colors.black),
+                        // --- 5. UPDATED USER ICON ---
+                        // Show a loading circle or the icon
+                        child: _isLoading 
+                          ? const Center(child: CircularProgressIndicator(color: AccountScreen.barGreen))
+                          : const Icon(Icons.perm_identity_sharp, size: 90, color: Colors.black),
                       ),
-                      // قلب صغير
                       const Positioned(
                         right: 30,
                         top: 50,
@@ -68,13 +161,12 @@ class AccountScreen extends StatelessWidget {
                           child: Icon(Icons.favorite, size: 30, color: Color(0xffFCD9BB)),
                         ),
                       ),
-                      // قلم تعديل
                       Positioned(
                         bottom: -12,
                         right: 56,
                         child: InkWell(
                           onTap: () {
-                            // TODO: تغيير الصورة/فتح محرر الملف الشخصي
+                            // TODO: Change profile picture
                           },
                           child: Container(
                             width: 40,
@@ -90,7 +182,7 @@ class AccountScreen extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.edit, size: 18, color: barGreen),
+                            child: const Icon(Icons.edit, size: 18, color: AccountScreen.barGreen),
                           ),
                         ),
                       ),
@@ -99,7 +191,7 @@ class AccountScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 20),
 
-                // التحية Hello, Sofia!
+                // --- 6. UPDATED NAME DISPLAY ---
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -112,18 +204,20 @@ class AccountScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      "$userName!",
+                      // Show a placeholder while loading, then the user's name
+                      _isLoading ? "..." : "$_userName!",
                       style: GoogleFonts.merriweather(
                         fontSize: 30,
-                        color: barGreen,
+                        color: AccountScreen.barGreen,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                   ],
                 ),
+                // --- END OF NAME UPDATE ---
+
                 const SizedBox(height: 18),
 
-                // الكارت الأبيض بالأزرار
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                   decoration: BoxDecoration(
@@ -142,37 +236,32 @@ class AccountScreen extends StatelessWidget {
                       _AccountButton(
                         text: "SOS",
                         onPressed: () {
-                          // TODO: افتحي صفحة الطلبات
-                          // Navigator.pushNamed(context, '/orders');
+                          // TODO: 
                         },
                       ),
                       const SizedBox(height: 12),
                       _AccountButton(
                         text: "Settings",
                         onPressed: () {
-                          // TODO: صفحة الإعدادات
-                          // Navigator.pushNamed(context, '/settings');
+                          // TODO:
                         },
                       ),
                       const SizedBox(height: 12),
-
-
                       _AccountButton(
                         text: "About us",
                         onPressed: () {
-                          // TODO: صفحة about
-                          // Navigator.pushNamed(context, '/about');
+                          // TODO:
                         },
                       ),
                       const SizedBox(height: 12),
+                      
+                      // --- 7. UPDATED SIGN OUT BUTTON ---
                       _AccountButton(
                         text: "Sign out",
-                        filled: true, // خليها بارزة لو حابة
-                        onPressed: () async {
-                          // TODO: signOut()  (Firebase/Auth)
-                          Navigator.pushReplacementNamed(context, 'signin');
-                        },
+                        filled: true,
+                        onPressed: _signOut, // Calls the real sign out method
                       ),
+                      // --- END OF SIGN OUT UPDATE ---
                     ],
                   ),
                 ),
@@ -182,12 +271,10 @@ class AccountScreen extends StatelessWidget {
           ),
         ],
       ),
-      // ملاحظة: لو بتستخدمي البار المخصّص اللي عملناه قبل كده، سيبي bottomNavigationBar هناك
     );
   }
 }
 
-/// زر مطابق للتصميم (مستدير الحواف، سماكة حدود خفيفة، مع خيار Filled)
 class _AccountButton extends StatelessWidget {
   final String text;
   final VoidCallback onPressed;
